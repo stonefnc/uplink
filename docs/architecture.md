@@ -90,6 +90,8 @@ A second workflow, "Uplink email intake", watches an IMAP mailbox. For each unre
 - The workflow posts to `http://localhost:5678/webhook/ticket` inside the container. Set `UPLINK_INTAKE_URL` to change that.
 - If the triage webhook is not reachable, the email is still marked read and is not retried.
 
+Outlook and Microsoft 365 mailboxes do not accept a password over IMAP. For those there is a third workflow, "Uplink Outlook intake", with the Outlook trigger and a Microsoft sign-in in place of the IMAP trigger. Its map and send nodes are identical to the IMAP workflow's. It does not mark messages read; it picks up unread mail received since its last poll. Gmail uses the IMAP workflow with an app password. Setup for both is in `workflows/README.md`.
+
 ### Environment access
 
 n8n 2.x blocks `$env` in expressions and Code nodes by default (`N8N_BLOCK_ENV_ACCESS_IN_NODE=true`). The workflow reads `LLM_BASE_URL`, `LLM_API_KEY` and `LLM_MODEL` that way, so `docker-compose.yml` sets `N8N_BLOCK_ENV_ACCESS_IN_NODE` to `false`.

@@ -1,0 +1,109 @@
+{
+  "id": "UplinkOutlook001",
+  "name": "Uplink Outlook intake",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "authentication": "microsoftOutlookOAuth2Api",
+        "event": "messageReceived",
+        "output": "fields",
+        "fields": [
+          "subject",
+          "body",
+          "receivedDateTime",
+          "internetMessageId"
+        ],
+        "filters": {
+          "readStatus": "unread"
+        },
+        "options": {}
+      },
+      "id": "11d895bb-f996-523a-a9f0-8b2e5f93f6c3",
+      "name": "Outlook trigger",
+      "type": "n8n-nodes-base.microsoftOutlookTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "UplinkOutlook0001",
+          "name": "Uplink Outlook"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Turn each email into the ticket shape the triage webhook expects. Only the\n// subject, text and date are used; the sender's address is not passed on.\nconst stripHtml = (html) =>\n  String(html == null ? '' : html)\n    .replace(/<!--[\\s\\S]*?-->/g, ' ')\n    .replace(/<(style|script|head|title)[\\s\\S]*?<\\/\\1>/gi, ' ')\n    .replace(/<br\\s*\\/?>|<\\/(p|div|li|tr|h[1-6])>/gi, '\\n')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&nbsp;/gi, ' ')\n    .replace(/&amp;/gi, '&')\n    .replace(/&lt;/gi, '<')\n    .replace(/&gt;/gi, '>')\n    .replace(/&quot;/gi, '\"')\n    .replace(/&#39;/gi, \"'\")\n    .replace(/[ \\t]+/g, ' ')\n    .replace(/ *\\n */g, '\\n')\n    .replace(/\\n{3,}/g, '\\n\\n')\n    .trim();\n\nconst out = [];\nfor (const item of $input.all()) {\n  const raw = (item && item.json) || {};\n  // An Outlook message has body: { contentType, content }. Bring it to the\n  // same shape as an IMAP email so the rest is shared.\n  const outlookBody = raw.body && typeof raw.body === 'object' ? raw.body : null;\n  const mail = outlookBody\n    ? {\n        subject: raw.subject,\n        date: raw.receivedDateTime,\n        textPlain: String(outlookBody.contentType).toLowerCase() === 'text' ? outlookBody.content : '',\n        textHtml: String(outlookBody.contentType).toLowerCase() === 'text' ? '' : outlookBody.content,\n        metadata: { 'message-id': raw.internetMessageId || raw.id },\n      }\n    : raw;\n  const metadata = mail.metadata && typeof mail.metadata === 'object' ? mail.metadata : {};\n  const header = (name) => {\n    const value = mail[name] != null ? mail[name] : metadata[name];\n    return typeof value === 'string' ? value : '';\n  };\n  const subject = header('subject');\n  const plain = typeof mail.textPlain === 'string' ? mail.textPlain.trim() : '';\n  const body = plain || stripHtml(mail.textHtml);\n\n  const parsed = Date.parse(header('date'));\n  const receivedAt = new Date(Number.isNaN(parsed) ? Date.now() : parsed).toISOString();\n\n  // Stable id from the Message-ID header, so a re-read email keeps its id.\n  const seed = header('message-id') || header('messageId') || subject + '|' + receivedAt;\n  let hash = 5381;\n  for (let i = 0; i < seed.length; i++) hash = ((hash * 33) ^ seed.charCodeAt(i)) >>> 0;\n  const id = 'E-' + receivedAt.replace(/\\D/g, '').slice(0, 14) + '-' + hash.toString(36);\n\n  out.push({ json: { ticket: { id, received_at: receivedAt, channel: 'email', subject, body } } });\n}\nreturn out;\n"
+      },
+      "id": "66b8e806-725c-58bb-9d1f-a3441bca539a",
+      "name": "Email to ticket",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ String($env.UPLINK_INTAKE_URL || '').trim() || 'http://localhost:5678/webhook/ticket' }}",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.ticket) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "3f7d3ea6-1124-573a-910a-78a5c210a438",
+      "name": "Send to triage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Outlook trigger": {
+      "main": [
+        [
+          {
+            "node": "Email to ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email to ticket": {
+      "main": [
+        [
+          {
+            "node": "Send to triage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

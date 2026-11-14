@@ -92,3 +92,28 @@ python tools/send_test_email.py --count 3
 ```
 
 Import and publish both workflows first. The emails show up in the ticket log within a minute, with ids starting `E-`. Importing `imap.test.json` replaces a real "Uplink mailbox" credential, so import the real one again afterwards.
+
+### Gmail
+
+Gmail works with the IMAP workflow above. In the Google account, turn on 2-Step Verification and create an app password; the normal account password is refused. In `imap.json` use host `imap.gmail.com`, port `993`, `"secure": true`, the full address as `user` and the app password as `password`.
+
+## uplink-outlook-intake.json
+
+Email intake for an Outlook or Microsoft 365 mailbox. Microsoft no longer accepts a username and password over IMAP, so this workflow uses the Outlook trigger with a Microsoft sign-in instead. Apart from the trigger it is the same as the IMAP workflow: it polls every minute for unread mail and posts each message to the triage webhook. It does not mark messages read.
+
+This workflow has passed offline tests and imports into n8n, but it has not been run against a real mailbox.
+
+### Setup
+
+1. In the Microsoft Entra admin center, register an application. Choose the account types that match the mailbox (personal, work, or both). Add a Web redirect URI: `http://localhost:5678/rest/oauth2-credential/callback`. Create a client secret.
+2. In the n8n editor, create a credential of type "Microsoft Outlook OAuth2 API" named "Uplink Outlook". Paste the application (client) ID and the client secret, then choose Connect and sign in with the mailbox account.
+3. Import the workflow:
+
+```
+docker compose exec -u node n8n n8n import:workflow --input=/workflows/uplink-outlook-intake.json
+```
+
+4. Open "Uplink Outlook intake" in the editor. In the "Outlook trigger" node, select the "Uplink Outlook" credential. Under Filters, add "Folders to Include" and pick Inbox; without it, mail in every folder is read.
+5. Publish it from the editor, or with `n8n publish:workflow --id=UplinkOutlook001`.
+
+A work or school account may need an administrator to approve the application before sign-in succeeds.

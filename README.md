@@ -29,4 +29,4 @@ Uplink/
 
 ## Status
 
-All five build steps are done: scaffold, ticket generator, a webhook workflow that classifies a ticket, drafts a first response, routes it by category and logs it to SQLite or CSV, and an email workflow that feeds an IMAP mailbox into it. Both workflows have been run in n8n 2.47.7; email intake has been run against the local test mailbox only. See `docs/architecture.md`.
+All five build steps are done: scaffold, ticket generator, a webhook workflow that classifies a ticket, drafts a first response, routes it by category and logs it to SQLite or CSV, and an email workflow that feeds an IMAP mailbox into it. The triage and IMAP workflows have been run in n8n 2.47.7; IMAP intake has been run against the local test mailbox only. A separate Outlook intake workflow imports into n8n but has not been run against a real mailbox. See `docs/architecture.md`.

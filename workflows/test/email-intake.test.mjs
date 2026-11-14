@@ -132,3 +132,72 @@ describe('Email to ticket', () => {
     assert.equal((await toTickets([mail, mail, mail])).length, 3);
   });
 });
+
+// ------------------------------------------------------------------ Outlook
+
+describe('Outlook intake workflow', () => {
+  const outlook = JSON.parse(fs.readFileSync(path.join(workflowsDir, 'uplink-outlook-intake.json'), 'utf8'));
+  const byName = (name) => outlook.nodes.find((n) => n.name === name);
+
+  test('name, fixed id, inactive', () => {
+    assert.equal(outlook.name, 'Uplink Outlook intake');
+    assert.equal(outlook.id, 'UplinkOutlook001');
+    assert.equal(outlook.active, false);
+  });
+
+  test('trigger polls for unread mail and asks for the fields the map needs', () => {
+    const trigger = byName('Outlook trigger');
+    assert.equal(trigger.type, 'n8n-nodes-base.microsoftOutlookTrigger');
+    assert.equal(trigger.parameters.event, 'messageReceived');
+    assert.equal(trigger.parameters.output, 'fields');
+    assert.deepEqual(trigger.parameters.fields, ['subject', 'body', 'receivedDateTime', 'internetMessageId']);
+    assert.deepEqual(trigger.parameters.filters, { readStatus: 'unread' });
+    assert.deepEqual(trigger.credentials, {
+      microsoftOutlookOAuth2Api: { id: 'UplinkOutlook0001', name: 'Uplink Outlook' },
+    });
+  });
+
+  test('map and send nodes are the same as in the IMAP workflow', () => {
+    assert.equal(byName('Email to ticket').parameters.jsCode, node('Email to ticket').parameters.jsCode);
+    assert.deepEqual(byName('Send to triage').parameters, node('Send to triage').parameters);
+    const targets = (from) => outlook.connections[from].main[0].map((c) => c.node);
+    assert.deepEqual(targets('Outlook trigger'), ['Email to ticket']);
+    assert.deepEqual(targets('Email to ticket'), ['Send to triage']);
+  });
+
+  test('node ids are unique across the two intake workflows', () => {
+    const ids = [...workflow.nodes, ...outlook.nodes].map((n) => n.id);
+    assert.equal(ids.length, new Set(ids).size);
+  });
+});
+
+describe('Email to ticket with an Outlook message', () => {
+  const message = {
+    id: 'AAMkAGI2',
+    subject: 'Projector will not turn on',
+    receivedDateTime: '2026-03-02T14:15:00Z',
+    internetMessageId: '<xyz789@example.org>',
+    from: { emailAddress: { address: 'requester@example.org' } },
+    body: {
+      contentType: 'html',
+      content:
+        '<html><head><title>x</title><style>p{margin:0}</style></head><body><!-- note -->' +
+        '<p>The projector in room 12 is dead.</p><p>Tried two outlets.</p></body></html>',
+    },
+  };
+
+  test('HTML body becomes text; subject, date and id are mapped', async () => {
+    const [ticket] = await toTickets([message]);
+    assert.equal(ticket.channel, 'email');
+    assert.equal(ticket.subject, 'Projector will not turn on');
+    assert.equal(ticket.body, 'The projector in room 12 is dead.\nTried two outlets.');
+    assert.equal(ticket.received_at, '2026-03-02T14:15:00.000Z');
+    assert.match(ticket.id, /^E-20260302141500-[0-9a-z]+$/);
+    assert.ok(!JSON.stringify(ticket).includes('requester@example.org'));
+  });
+
+  test('a text body is used as is', async () => {
+    const [ticket] = await toTickets([{ ...message, body: { contentType: 'text', content: 'Plain words.' } }]);
+    assert.equal(ticket.body, 'Plain words.');
+  });
+});
