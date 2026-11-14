@@ -1,0 +1,32 @@
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:2.47.7
+    container_name: uplink-n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    env_file:
+      - .env
+    environment:
+      GENERIC_TIMEZONE: ${GENERIC_TIMEZONE:-UTC}
+      TZ: ${TZ:-UTC}
+      LLM_BASE_URL: ${LLM_BASE_URL}
+      LLM_API_KEY: ${LLM_API_KEY}
+      LLM_MODEL: ${LLM_MODEL}
+      # n8n 2.x blocks $env in expressions and Code nodes by default. The
+      # workflow reads the LLM_* variables that way. See docs/architecture.md.
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      # The "Log ticket" Code node writes the ticket log itself, so it needs
+      # these two built-in modules. See docs/architecture.md.
+      NODE_FUNCTION_ALLOW_BUILTIN: "fs,node:sqlite"
+      LOG_BACKEND: ${LOG_BACKEND:-sqlite}
+      LOG_PATH: ${LOG_PATH:-/data/uplink-log.sqlite}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./workflows:/workflows:ro
+      - ./data:/data
+
+volumes:
+  n8n_data:
