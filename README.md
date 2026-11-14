@@ -18,9 +18,10 @@ Uplink is an IT help desk ticket triage workflow built on n8n and run with Docke
 ```
 Uplink/
   docker-compose.yml   n8n service
+  docker-compose.test.yml  local test mailbox, for trying email intake
   .env.example         settings template
-  workflows/           exported n8n workflows and offline tests
-  tools/               test LLM stub and evaluation script
+  workflows/           exported n8n workflows, credential templates and offline tests
+  tools/               test LLM stub, evaluation script and test email sender
   generator/           fake ticket generator and tests
   data/                ticket log (SQLite or CSV), not committed
   docs/architecture.md flow, categories, priorities, build steps
@@ -28,4 +29,4 @@ Uplink/
 
 ## Status
 
-Steps 1 to 4 are built: scaffold, ticket generator, and a webhook workflow that classifies a ticket, drafts a first response, routes it by category and logs it to SQLite or CSV. The workflow has been run in n8n 2.47.7. IMAP email intake (step 5) is not built. See `docs/architecture.md` for the build steps.
+All five build steps are done: scaffold, ticket generator, a webhook workflow that classifies a ticket, drafts a first response, routes it by category and logs it to SQLite or CSV, and an email workflow that feeds an IMAP mailbox into it. Both workflows have been run in n8n 2.47.7; email intake has been run against the local test mailbox only. See `docs/architecture.md`.

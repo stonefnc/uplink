@@ -1,0 +1,93 @@
+{
+  "id": "UplinkEmail00001",
+  "name": "Uplink email intake",
+  "nodes": [
+    {
+      "parameters": {
+        "mailbox": "INBOX",
+        "postProcessAction": "read",
+        "format": "simple",
+        "options": {}
+      },
+      "id": "e8998449-f11f-5027-b7ae-2f7370247d54",
+      "name": "Email trigger",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        0
+      ],
+      "credentials": {
+        "imap": {
+          "id": "UplinkImap000001",
+          "name": "Uplink mailbox"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Turn each email into the ticket shape the triage webhook expects. Only the\n// subject, text and date are used; the sender's address is not passed on.\nconst stripHtml = (html) =>\n  String(html == null ? '' : html)\n    .replace(/<(style|script)[\\s\\S]*?<\\/\\1>/gi, ' ')\n    .replace(/<br\\s*\\/?>|<\\/(p|div|li|tr|h[1-6])>/gi, '\\n')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&nbsp;/gi, ' ')\n    .replace(/&amp;/gi, '&')\n    .replace(/&lt;/gi, '<')\n    .replace(/&gt;/gi, '>')\n    .replace(/&quot;/gi, '\"')\n    .replace(/&#39;/gi, \"'\")\n    .replace(/[ \\t]+/g, ' ')\n    .replace(/ *\\n */g, '\\n')\n    .replace(/\\n{3,}/g, '\\n\\n')\n    .trim();\n\nconst out = [];\nfor (const item of $input.all()) {\n  const mail = (item && item.json) || {};\n  const metadata = mail.metadata && typeof mail.metadata === 'object' ? mail.metadata : {};\n  const header = (name) => {\n    const value = mail[name] != null ? mail[name] : metadata[name];\n    return typeof value === 'string' ? value : '';\n  };\n  const subject = header('subject');\n  const plain = typeof mail.textPlain === 'string' ? mail.textPlain.trim() : '';\n  const body = plain || stripHtml(mail.textHtml);\n\n  const parsed = Date.parse(header('date'));\n  const receivedAt = new Date(Number.isNaN(parsed) ? Date.now() : parsed).toISOString();\n\n  // Stable id from the Message-ID header, so a re-read email keeps its id.\n  const seed = header('message-id') || header('messageId') || subject + '|' + receivedAt;\n  let hash = 5381;\n  for (let i = 0; i < seed.length; i++) hash = ((hash * 33) ^ seed.charCodeAt(i)) >>> 0;\n  const id = 'E-' + receivedAt.replace(/\\D/g, '').slice(0, 14) + '-' + hash.toString(36);\n\n  out.push({ json: { ticket: { id, received_at: receivedAt, channel: 'email', subject, body } } });\n}\nreturn out;\n"
+      },
+      "id": "db3d987e-f332-5953-a472-8f5c6f88efd0",
+      "name": "Email to ticket",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ String($env.UPLINK_INTAKE_URL || '').trim() || 'http://localhost:5678/webhook/ticket' }}",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.ticket) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "6c940f64-8bba-5f4d-89f9-3d02ac2c0524",
+      "name": "Send to triage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Email trigger": {
+      "main": [
+        [
+          {
+            "node": "Email to ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email to ticket": {
+      "main": [
+        [
+          {
+            "node": "Send to triage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

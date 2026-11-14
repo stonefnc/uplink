@@ -2,7 +2,7 @@
 
 ## Flow
 
-1. Intake: a ticket arrives by webhook (email via IMAP later).
+1. Intake: a ticket arrives by webhook, or by email through an IMAP mailbox.
 2. Classify: an LLM assigns a category and a priority, with a one-line reason.
 3. Draft: the LLM writes a short first response for the technician to review.
 4. Route: the ticket goes to a branch based on its category.
@@ -79,6 +79,16 @@ The branches only label the ticket for now. A notification or hand-off for a tea
 A logging problem does not fail the request: the response has `logged: false` and `log_error`. In CSV, a cell that starts with `=`, `+`, `-` or `@` gets a leading apostrophe so a spreadsheet does not run it as a formula.
 
 The Code node writes the file itself, which needs two Node built-in modules. `docker-compose.yml` allows them with `NODE_FUNCTION_ALLOW_BUILTIN=fs,node:sqlite`. Trade-off: any Code node on this instance can then read and write files the container user can reach. As with environment access, that is acceptable for a single-user instance.
+
+### Email intake
+
+A second workflow, "Uplink email intake", watches an IMAP mailbox. For each unread email it builds a ticket (subject, plain-text body or text taken from the HTML, the email's date, `channel: email`, and an id starting with `E-` derived from the Message-ID) and posts it to the triage webhook. From there the email is handled exactly like a webhook ticket, so there is one place for classification, routing and logging.
+
+- The sender's address is not passed on, logged or sent to the LLM.
+- The email is marked read after it is picked up. Nothing is sent back to the sender; the draft only goes to the log.
+- The mailbox login is an n8n credential named "Uplink mailbox". It is not in the workflow file. See `workflows/README.md`.
+- The workflow posts to `http://localhost:5678/webhook/ticket` inside the container. Set `UPLINK_INTAKE_URL` to change that.
+- If the triage webhook is not reachable, the email is still marked read and is not retried.
 
 ### Environment access
 

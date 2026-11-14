@@ -56,3 +56,39 @@ python tools/mock_llm.py
 ```
 
 Set `LLM_BASE_URL=http://host.docker.internal:8000/v1` and any `LLM_API_KEY` and `LLM_MODEL` in `.env`. The mock is a keyword-rule stub for testing, not a model. Then run `python tools/evaluate.py` to send the generated tickets and compare results.
+
+## uplink-email-intake.json
+
+Email intake. It watches an IMAP mailbox and posts each unread email to the triage webhook as a ticket, so `uplink-triage.json` must be imported and published too. Details are in `docs/architecture.md`.
+
+### Mailbox credential
+
+The workflow refers to an n8n credential named "Uplink mailbox". Create it from the template:
+
+1. Copy `workflows/credentials/imap.example.json` to `workflows/credentials/imap.json` (gitignored) and fill in the host, port, user and password.
+2. Import it, then delete the file:
+
+```
+docker compose exec -u node n8n n8n import:credentials --input=/workflows/credentials/imap.json
+```
+
+n8n stores the credential encrypted with `N8N_ENCRYPTION_KEY`. You can also create or edit it in the editor under Credentials.
+
+### Import and publish
+
+```
+docker compose exec -u node n8n n8n import:workflow --input=/workflows/uplink-email-intake.json
+docker compose exec -u node n8n n8n publish:workflow --id=UplinkEmail00001
+```
+
+### Trying it with the local test mailbox
+
+`docker-compose.test.yml` adds a throwaway mail server with one mailbox. It is for testing only.
+
+```
+docker compose -f docker-compose.yml -f docker-compose.test.yml up -d
+docker compose exec -u node n8n n8n import:credentials --input=/workflows/credentials/imap.test.json
+python tools/send_test_email.py --count 3
+```
+
+Import and publish both workflows first. The emails show up in the ticket log within a minute, with ids starting `E-`. Importing `imap.test.json` replaces a real "Uplink mailbox" credential, so import the real one again afterwards.
